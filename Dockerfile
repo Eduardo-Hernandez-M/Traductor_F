@@ -4,7 +4,15 @@ FROM python:3.10-slim
 RUN useradd -m -s /bin/bash appuser
 WORKDIR /app
 
-# Cambiar al usuario sin privilegios antes de instalar paquetes
+# Copiar todos los archivos del proyecto como root
+COPY requirements.txt .
+COPY main.py .
+COPY index.html .
+
+# Otorgar permisos totales al usuario sobre la carpeta de la aplicación
+RUN chown -R appuser:appuser /app
+
+# Cambiar al usuario sin privilegios para mayor seguridad
 USER appuser
 
 # Crear y activar un entorno virtual
@@ -12,13 +20,8 @@ ENV VIRTUAL_ENV=/home/appuser/venv
 RUN python -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# Copiar archivos e instalar dependencias
-COPY requirements.txt .
+# Instalar dependencias en el entorno virtual
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Copiar el código fuente y la página web
-COPY main.py .
-COPY index.html .
 
 EXPOSE 10000
 
