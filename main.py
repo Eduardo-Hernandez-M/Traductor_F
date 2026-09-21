@@ -7,10 +7,10 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from passlib.context import CryptContext
-from translate import Translator
 import jwt
 from datetime import datetime, timedelta
 import sqlite3
+import httpx
 import os
 
 # --- CONFIGURACIÓN DE SEGURIDAD ---
@@ -115,20 +115,28 @@ def login(request: Request, user: UserAuth):
 def translate_text(request: Request, payload: TranslationRequest, current_user: str = Depends(verify_token)):
     safe_text = payload.text.strip()
     
-    source_lang = 'es' if payload.direction == "es-zh" else 'zh'
-    target_lang = 'zh' if payload.direction == "es-zh" else 'es'
+    source_lang = 'es' if payload.direction == "es-zh" else 'zh-CN'
+    target_lang = 'zh-CN' if payload.direction == "es-zh" else 'es'
+    
+    url = "https://translate.googleapis.com/translate_a/single"
+    params = {
+        "client": "gtx",
+        "sl": source_lang,
+        "tl": target_lang,
+        "dt": "t",
+        "q": safe_text
+    }
     
     try:
-        translator = Translator(
-            from_lang=source_lang, 
-            to_lang=target_lang,
-            email="tu_correo_real@gmail.com"  # <--- INGRESA TU CORREO AQUÍ
-        )
-        resultado = translator.translate(safe_text)
-        
-        if "MYMEMORY WARNING" in resultado:
-            raise Exception("Límite de 50,000 traducciones diarias alcanzado.")
+        # Petición HTTP nativa al endpoint de la extensión de Chrome
+        with httpx.Client() as client:
+            response = client.get(url, params=params, timeout=15.0)
+            response.raise_for_status()
+            data = response.json()
             
-        return {"original": safe_text, "translation": resultado}
+            # Reconstrucción de la matriz JSON generada por Google
+            traduccion = "".join([oracion[0] for oracion in data[0] if oracion[0]])
+            
+        return {"original": safe_text, "translation": traduccion}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fallo técnico: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Fallo técnico de red: {str(e)}")
