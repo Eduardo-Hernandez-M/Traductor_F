@@ -7,6 +7,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from passlib.context import CryptContext
+from urllib.parse import quote
 import jwt
 from datetime import datetime, timedelta
 import sqlite3
@@ -115,27 +116,30 @@ def login(request: Request, user: UserAuth):
 def translate_text(request: Request, payload: TranslationRequest, current_user: str = Depends(verify_token)):
     safe_text = payload.text.strip()
     
-    source_lang = 'es' if payload.direction == "es-zh" else 'zh-CN'
-    target_lang = 'zh-CN' if payload.direction == "es-zh" else 'es'
+    # Lingva usa 'zh' para chino estándar
+    source_lang = 'es' if payload.direction == "es-zh" else 'zh'
+    target_lang = 'zh' if payload.direction == "es-zh" else 'es'
     
-    url = "https://translate.googleapis.com/translate_a/single"
-    params = {
-        "client": "gtx",
-        "sl": source_lang,
-        "tl": target_lang,
-        "dt": "t",
-        "q": safe_text
-    }
+    # Codificar el texto para que pueda viajar seguro por la URL
+    encoded_text = quote(safe_text)
+    
+    # URL del túnel público de Lingva
+    url = f"https://lingva.ml/api/v1/{source_lang}/{target_lang}/{encoded_text}"
     
     try:
-        # Petición HTTP nativa al endpoint de la extensión de Chrome
         with httpx.Client() as client:
-            response = client.get(url, params=params, timeout=15.0)
+            response = client.get(url, timeout=15.0)
+            
+            # Manejo específico si el túnel llegara a saturarse
+            if response.status_code == 429:
+                raise HTTPException(status_code=502, detail="El túnel de traducción está saturado. Espera un momento.")
+                
             response.raise_for_status()
             data = response.json()
             
-            # Reconstrucción de la matriz JSON generada por Google
-            traduccion = "".join([oracion[0] for oracion in data[0] if oracion[0]])
+            traduccion = data.get("translation")
+            if not traduccion:
+                raise Exception("El servidor no devolvió la traducción esperada.")
             
         return {"original": safe_text, "translation": traduccion}
     except Exception as e:
