@@ -11,7 +11,6 @@ from deep_translator import GoogleTranslator
 import jwt
 from datetime import datetime, timedelta
 import sqlite3
-import asyncio
 import os
 
 # --- CONFIGURACIÓN DE SEGURIDAD ---
@@ -78,7 +77,6 @@ async def serve_webpage():
 @app.post("/register")
 @limiter.limit("5/minute")
 def register(request: Request, user: UserAuth, current_user: str = Depends(verify_token)):
-    # Capa de seguridad adicional: Solo el admin puede usar este endpoint
     if current_user != "admin":
         raise HTTPException(status_code=403, detail="Solo el administrador puede crear usuarios.")
         
@@ -112,19 +110,20 @@ def login(request: Request, user: UserAuth):
     token = jwt.encode({"sub": user.username, "exp": datetime.utcnow() + timedelta(hours=24)}, SECRET_KEY, algorithm=ALGORITHM)
     return {"access_token": token, "username": user.username}
 
+# CORRECCIÓN: Se eliminó 'async' para delegar la gestión del hilo a FastAPI
 @app.post("/translate")
 @limiter.limit("15/minute")
-async def translate_text(request: Request, payload: TranslationRequest, current_user: str = Depends(verify_token)):
+def translate_text(request: Request, payload: TranslationRequest, current_user: str = Depends(verify_token)):
     safe_text = payload.text.strip()
     
-    # Configuración de idiomas para deep-translator
     source_lang = 'es' if payload.direction == "es-zh" else 'zh-CN'
     target_lang = 'zh-CN' if payload.direction == "es-zh" else 'es'
     
     try:
-        # Se ejecuta en un hilo separado para no bloquear el servidor asíncrono
         traductor = GoogleTranslator(source=source_lang, target=target_lang)
-        resultado = await asyncio.to_thread(traductor.translate, safe_text)
+        # Ejecución síncrona directa y estable
+        resultado = traductor.translate(safe_text)
         return {"original": safe_text, "translation": resultado}
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Fallo en el motor de traducción interno.")
+        # Si llega a fallar, enviará el motivo exacto a la interfaz web
+        raise HTTPException(status_code=500, detail=f"Fallo técnico: {str(e)}")
