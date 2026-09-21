@@ -6,9 +6,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Descarga previa de los modelos para evitar timeouts en el primer arranque
-RUN python -c "from transformers import pipeline; pipeline('translation', model='Helsinki-NLP/opus-mt-es-zh'); pipeline('translation', model='Helsinki-NLP/opus-mt-zh-es')"
-
 COPY main.py .
 
 RUN chown -R appuser:appuser /app
