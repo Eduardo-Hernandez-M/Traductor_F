@@ -3,141 +3,237 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Traductor de Voz Seguro</title>
+    <title>Traductor Profesional</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; display: flex; justify-content: center; }
-        .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 500px; }
-        h2 { text-align: center; color: #333; }
-        label { font-weight: bold; margin-top: 10px; display: block; color: #555; }
-        input[type="password"], select, textarea { width: 100%; padding: 10px; margin-top: 5px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
-        textarea { resize: vertical; min-height: 80px; }
-        .btn-group { display: flex; gap: 10px; }
-        button { flex: 1; padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s; }
-        .btn-mic { background-color: #dc3545; color: white; }
-        .btn-mic:hover { background-color: #c82333; }
-        .btn-translate { background-color: #0d6efd; color: white; }
-        .btn-translate:hover { background-color: #0b5ed7; }
-        .btn-listen { background-color: #198754; color: white; margin-top: 10px; width: 100%; }
-        .btn-listen:hover { background-color: #157347; }
-        .status { text-align: center; font-size: 0.9em; color: #888; margin-bottom: 10px; height: 20px;}
+        :root {
+            --primary-blue: #004080;
+            --secondary-blue: #0059b3;
+            --black: #1a1a1a;
+            --white: #ffffff;
+            --bg-gray: #f4f6f9;
+            --border: #dce1e6;
+        }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background-color: var(--bg-gray); margin: 0; padding: 20px; display: flex; justify-content: center; color: var(--black); }
+        .container { background: var(--white); padding: 40px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); width: 100%; max-width: 500px; border-top: 5px solid var(--primary-blue); }
+        h2 { text-align: center; color: var(--black); margin-top: 0; }
+        .subtitle { text-align: center; color: #666; font-size: 0.9em; margin-bottom: 25px; }
+        label { font-weight: 600; margin-top: 15px; display: block; font-size: 0.9em; }
+        input, select, textarea { width: 100%; padding: 12px; margin-top: 8px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; font-family: inherit; transition: border 0.3s; }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary-blue); }
+        textarea { resize: vertical; min-height: 100px; }
+        
+        .btn { width: 100%; padding: 12px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; transition: background 0.3s; margin-top: 10px; font-size: 1em; }
+        .btn-primary { background-color: var(--primary-blue); color: var(--white); }
+        .btn-primary:hover { background-color: var(--secondary-blue); }
+        .btn-outline { background-color: transparent; color: var(--primary-blue); border: 1px solid var(--primary-blue); }
+        .btn-outline:hover { background-color: #f0f4f8; }
+        .btn-black { background-color: var(--black); color: var(--white); }
+        .btn-black:hover { background-color: #333; }
+        
+        .btn-group { display: flex; gap: 10px; margin-top: 5px; }
+        .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid var(--border); }
+        .user-tag { font-size: 0.9em; font-weight: bold; color: var(--primary-blue); }
+        
+        .status { text-align: center; font-size: 0.85em; color: #666; height: 20px; margin-top: -5px; margin-bottom: 10px; }
+        #app-view, #auth-view { transition: opacity 0.3s; }
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h2>Traductor con Voz 🎤</h2>
+<!-- PANTALLA DE AUTENTICACIÓN -->
+<div class="container" id="auth-view">
+    <h2>Bienvenido</h2>
+    <div class="subtitle">Ingresa tus credenciales para acceder al sistema</div>
     
-    <label>Llave de Seguridad (API Key):</label>
-    <input type="password" id="apiKey" placeholder="Ingresa tu clave secreta">
+    <label>Usuario</label>
+    <input type="text" id="username" placeholder="Tu nombre de usuario">
+    
+    <label>Contraseña</label>
+    <input type="password" id="password" placeholder="••••••••">
+    
+    <div class="status" id="authStatus"></div>
 
-    <label>Dirección:</label>
+    <button class="btn btn-primary" onclick="login()">Iniciar Sesión</button>
+    <button class="btn btn-outline" onclick="register()">Crear Nuevo Usuario</button>
+</div>
+
+<!-- PANTALLA DEL TRADUCTOR -->
+<div class="container hidden" id="app-view">
+    <div class="header-bar">
+        <span class="user-tag" id="userDisplay">Usuario</span>
+        <button class="btn btn-outline" style="width: auto; padding: 5px 15px; margin: 0;" onclick="logout()">Salir</button>
+    </div>
+
+    <label>Dirección de Traducción</label>
     <select id="direction">
-        <option value="es-zh">Español a Chino Mandarín</option>
-        <option value="zh-es">Chino a Español</option>
+        <option value="es-zh">🇪🇸 Español  ➔  🇨🇳 Chino Mandarín</option>
+        <option value="zh-es">🇨🇳 Chino  ➔  🇪🇸 Español</option>
     </select>
 
-    <label>Texto a traducir:</label>
-    <textarea id="inputText" placeholder="Escribe o usa el micrófono..."></textarea>
-    
+    <label>Texto de entrada</label>
+    <textarea id="inputText" placeholder="Escribe aquí o usa el micrófono..."></textarea>
     <div class="status" id="micStatus"></div>
 
     <div class="btn-group">
-        <button class="btn-mic" onclick="startDictation()">🎤 Dictar</button>
-        <button class="btn-translate" onclick="translateText()">Traducir ➔</button>
+        <button class="btn btn-black" onclick="startDictation()">🎤 Dictar</button>
+        <button class="btn btn-primary" onclick="translateText()">Traducir</button>
     </div>
 
-    <label>Resultado:</label>
-    <textarea id="outputText" readonly placeholder="La traducción aparecerá aquí..."></textarea>
+    <label>Traducción</label>
+    <textarea id="outputText" readonly placeholder="El resultado aparecerá aquí..."></textarea>
     
-    <button class="btn-listen" onclick="speakTranslation()">🔊 Escuchar Traducción</button>
+    <button class="btn btn-outline" onclick="speakTranslation()">🔊 Reproducir Audio</button>
 </div>
 
 <script>
-    // 1. LÓGICA DEL MICRÓFONO (Speech-to-Text)
-    function startDictation() {
-        if (window.hasOwnProperty('webkitSpeechRecognition') || window.hasOwnProperty('SpeechRecognition')) {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            const recognition = new SpeechRecognition();
-            
-            const dir = document.getElementById('direction').value;
-            recognition.lang = dir === 'es-zh' ? 'es-MX' : 'cmn-Hans-CN'; // Configura el idioma que va a escuchar
-            recognition.continuous = false;
-            recognition.interimResults = false;
+    const API_BASE = window.location.origin;
 
-            document.getElementById('micStatus').innerText = "Escuchando... Habla ahora.";
-            document.getElementById('micStatus').style.color = "#dc3545";
+    // --- LÓGICA DE AUTENTICACIÓN ---
+    async function authRequest(endpoint, isLogin) {
+        const user = document.getElementById('username').value.trim();
+        const pass = document.getElementById('password').value.trim();
+        const status = document.getElementById('authStatus');
 
-            recognition.start();
-
-            recognition.onresult = function(e) {
-                document.getElementById('inputText').value = e.results[0][0].transcript;
-                document.getElementById('micStatus').innerText = "Voz capturada.";
-                document.getElementById('micStatus').style.color = "#198754";
-                recognition.stop();
-            };
-
-            recognition.onerror = function(e) {
-                document.getElementById('micStatus').innerText = "Error en el micrófono: " + e.error;
-                document.getElementById('micStatus').style.color = "red";
-                recognition.stop();
-            }
-        } else {
-            alert("Tu navegador no soporta el reconocimiento de voz. Usa Chrome o Edge.");
-        }
-    }
-
-    // 2. LÓGICA DE TRADUCCIÓN (Conexión a tu API)
-    async function translateText() {
-        const text = document.getElementById('inputText').value;
-        const direction = document.getElementById('direction').value;
-        const apiKey = document.getElementById('apiKey').value;
-
-        if (!text || !apiKey) {
-            alert("Por favor, ingresa el texto y la API Key.");
+        if (!user || !pass) {
+            status.innerText = "Completa todos los campos.";
+            status.style.color = "red";
             return;
         }
 
-        document.getElementById('outputText').value = "Traduciendo...";
+        status.innerText = isLogin ? "Iniciando sesión..." : "Creando usuario...";
+        status.style.color = "#666";
 
         try {
-            const response = await fetch('/translate', {
+            const res = await fetch(`${API_BASE}/${endpoint}`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-API-KEY': apiKey
-                },
-                body: JSON.stringify({ text: text, direction: direction })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: user, password: pass })
             });
+            const data = await res.json();
 
-            if (response.status === 200) {
-                const data = await response.json();
-                document.getElementById('outputText').value = data.translation;
-            } else if (response.status === 403) {
-                document.getElementById('outputText').value = "Error: API Key incorrecta.";
-            } else if (response.status === 429) {
-                document.getElementById('outputText').value = "Error: Límite de peticiones excedido (Rate Limit).";
+            if (res.ok) {
+                if (isLogin) {
+                    sessionStorage.setItem('token', data.access_token);
+                    sessionStorage.setItem('username', data.username);
+                    showApp();
+                } else {
+                    status.innerText = data.message;
+                    status.style.color = "green";
+                }
             } else {
-                document.getElementById('outputText').value = "Error en el servidor.";
+                status.innerText = data.detail || "Error en la operación";
+                status.style.color = "red";
             }
-        } catch (error) {
-            document.getElementById('outputText').value = "Error de conexión.";
+        } catch (err) {
+            status.innerText = "Error de conexión con el servidor.";
+            status.style.color = "red";
         }
     }
 
-    // 3. LÓGICA DEL ALTAVOZ (Text-to-Speech)
+    function login() { authRequest('login', true); }
+    function register() { authRequest('register', false); }
+    
+    function logout() {
+        sessionStorage.removeItem('token');
+        sessionStorage.removeItem('username');
+        document.getElementById('password').value = "";
+        document.getElementById('authStatus').innerText = "";
+        document.getElementById('app-view').classList.add('hidden');
+        document.getElementById('auth-view').classList.remove('hidden');
+    }
+
+    function showApp() {
+        const token = sessionStorage.getItem('token');
+        if (token) {
+            document.getElementById('auth-view').classList.add('hidden');
+            document.getElementById('app-view').classList.remove('hidden');
+            document.getElementById('userDisplay').innerText = `👤 ${sessionStorage.getItem('username')}`;
+        }
+    }
+
+    // --- LÓGICA DE MICRÓFONO (Compatible con PC y Móvil) ---
+    function startDictation() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            alert("Tu navegador no soporta dictado por voz. Usa Chrome, Edge o Safari.");
+            return;
+        }
+        
+        const recognition = new SpeechRecognition();
+        const dir = document.getElementById('direction').value;
+        recognition.lang = dir === 'es-zh' ? 'es-MX' : 'zh-CN';
+        recognition.continuous = false;
+        recognition.interimResults = false;
+
+        const status = document.getElementById('micStatus');
+        status.innerText = "Escuchando... (Habla ahora)";
+        status.style.color = "red";
+
+        recognition.start();
+
+        recognition.onresult = function(e) {
+            document.getElementById('inputText').value = e.results[0][0].transcript;
+            status.innerText = "Audio capturado.";
+            status.style.color = "green";
+            setTimeout(() => status.innerText = "", 3000);
+        };
+
+        recognition.onerror = function(e) {
+            status.innerText = "Error al escuchar: " + e.error;
+            status.style.color = "red";
+        }
+    }
+
+    // --- LÓGICA DE TRADUCCIÓN ---
+    async function translateText() {
+        const text = document.getElementById('inputText').value.trim();
+        const direction = document.getElementById('direction').value;
+        const outBox = document.getElementById('outputText');
+        const token = sessionStorage.getItem('token');
+
+        if (!text) return alert("Escribe un texto primero.");
+        outBox.value = "Traduciendo...";
+
+        try {
+            const res = await fetch(`${API_BASE}/translate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ text, direction })
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                outBox.value = data.translation;
+            } else if (res.status === 401) {
+                alert("Tu sesión ha expirado. Por favor, inicia sesión de nuevo.");
+                logout();
+            } else {
+                outBox.value = `Error: ${data.detail}`;
+            }
+        } catch (err) {
+            outBox.value = "Error de red al intentar traducir.";
+        }
+    }
+
+    // --- LÓGICA DE ALTAVOZ ---
     function speakTranslation() {
         const textToSpeak = document.getElementById('outputText').value;
         if (!textToSpeak || textToSpeak.startsWith("Error") || textToSpeak === "Traduciendo...") return;
 
         const synth = window.speechSynthesis;
         const utterance = new SpeechSynthesisUtterance(textToSpeak);
-        
         const dir = document.getElementById('direction').value;
-        // Si traducimos a chino, la voz debe ser en chino. Si traducimos a español, voz en español.
-        utterance.lang = dir === 'es-zh' ? 'zh-CN' : 'es-MX'; 
         
+        utterance.lang = dir === 'es-zh' ? 'zh-CN' : 'es-MX'; 
         synth.speak(utterance);
     }
+
+    // Verificar si ya hay sesión iniciada al cargar la página
+    window.onload = showApp;
 </script>
 
 </body>
