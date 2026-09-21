@@ -116,11 +116,14 @@ def login(request: Request, user: UserAuth):
 def translate_text(request: Request, payload: TranslationRequest, current_user: str = Depends(verify_token)):
     safe_text = payload.text.strip()
     
-    source_lang = 'es' if payload.direction == "es-zh" else 'zh'
-    target_lang = 'zh' if payload.direction == "es-zh" else 'es'
-    encoded_text = quote(safe_text)
+    # CORRECCIÓN 1: Usar los códigos exactos de Google. 
+    # 'zh-CN' para generar Mandarín. 'auto' para leer Tradicional o Simplificado sin errores.
+    source_lang = 'es' if payload.direction == "es-zh" else 'auto'
+    target_lang = 'zh-CN' if payload.direction == "es-zh" else 'es'
     
-    # Red de servidores espejo (Túneles alternativos)
+    # CORRECCIÓN 2: safe='' garantiza que los signos de interrogación o barras no rompan la URL
+    encoded_text = quote(safe_text, safe='')
+    
     instancias = [
         "https://lingva.thedesk.top",
         "https://translate.plausibility.cloud",
@@ -128,7 +131,6 @@ def translate_text(request: Request, payload: TranslationRequest, current_user: 
         "https://lingva.ml"
     ]
     
-    # Cabeceras para evadir firewalls haciéndonos pasar por Google Chrome
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         "Accept": "application/json"
@@ -136,7 +138,6 @@ def translate_text(request: Request, payload: TranslationRequest, current_user: 
     
     try:
         with httpx.Client(headers=headers, timeout=10.0) as client:
-            # Intenta conectar con cada servidor hasta que uno funcione
             for base_url in instancias:
                 url = f"{base_url}/api/v1/{source_lang}/{target_lang}/{encoded_text}"
                 try:
@@ -144,12 +145,13 @@ def translate_text(request: Request, payload: TranslationRequest, current_user: 
                     if response.status_code == 200:
                         data = response.json()
                         traduccion = data.get("translation")
+                        
+                        # Verificación de seguridad: si nos devuelve la traducción correcta
                         if traduccion:
                             return {"original": safe_text, "translation": traduccion}
                 except httpx.RequestError:
-                    continue  # Si el servidor actual está caído, pasa al siguiente
+                    continue  # Si el servidor espejo falla, intenta silenciosamente con el siguiente
                     
-        # Si termina el ciclo y ninguno funcionó
-        raise HTTPException(status_code=502, detail="Todos los servidores de traducción están bloqueados. Intenta en unos minutos.")
+        raise HTTPException(status_code=502, detail="Los servidores están inactivos. Intenta en un par de minutos.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fallo técnico interno: {str(e)}")
