@@ -14,17 +14,24 @@ import httpx
 import html
 import os
 
-# --- CONFIGURACIÓN DE SEGURIDAD Y BASE DE DATOS ---
+# --- CONFIGURACIÓN DE SEGURIDAD ---
 SECRET_KEY = os.getenv("JWT_SECRET", "super-llave-secreta-traductor")
 ALGORITHM = "HS256"
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
 
 def init_db():
-    """Inicializa la base de datos SQLite local dentro de la app"""
+    """Inicializa la base de datos y asegura que el admin siempre exista"""
     conn = sqlite3.connect("usuarios.db")
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS users (username TEXT UNIQUE, password TEXT)''')
+    
+    # NUEVO: CREACIÓN OBLIGATORIA DEL USUARIO ADMIN
+    c.execute("SELECT * FROM users WHERE username = 'admin'")
+    if not c.fetchone():
+        hashed_pw = pwd_context.hash("Traductor.2026")
+        c.execute("INSERT INTO users (username, password) VALUES (?, ?)", ('admin', hashed_pw))
+        
     conn.commit()
     conn.close()
 
@@ -44,7 +51,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- MODELOS DE DATOS ---
 class UserAuth(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     password: str = Field(..., min_length=6)
@@ -53,7 +59,6 @@ class TranslationRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=500)
     direction: str = Field(..., pattern="^(es-zh|zh-es)$")
 
-# --- VALIDACIÓN DE TOKEN ---
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
@@ -75,6 +80,9 @@ async def serve_webpage():
 @app.post("/register")
 @limiter.limit("5/minute")
 def register(request: Request, user: UserAuth):
+    if user.username.lower() == "admin":
+        raise HTTPException(status_code=400, detail="No puedes registrar un usuario con este nombre.")
+        
     conn = sqlite3.connect("usuarios.db")
     c = conn.cursor()
     hashed_pw = pwd_context.hash(user.password)
@@ -99,7 +107,6 @@ def login(request: Request, user: UserAuth):
     if not row or not pwd_context.verify(user.password, row[0]):
         raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos.")
     
-    # Crea un token válido por 24 horas
     token = jwt.encode({"sub": user.username, "exp": datetime.utcnow() + timedelta(hours=24)}, SECRET_KEY, algorithm=ALGORITHM)
     return {"access_token": token, "username": user.username}
 
@@ -107,14 +114,18 @@ def login(request: Request, user: UserAuth):
 @limiter.limit("15/minute")
 async def translate_text(request: Request, payload: TranslationRequest, current_user: str = Depends(verify_token)):
     safe_text = html.escape(payload.text.strip())
-    # Corrección de códigos de idioma para evitar errores de servidor
     langpair = "es|zh-CN" if payload.direction == "es-zh" else "zh-CN|es"
     url = "https://api.mymemory.translated.net/get"
     params = {"q": safe_text, "langpair": langpair}
     
+    # NUEVO: Cabecera para evitar que el proveedor bloquee la conexión
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
+    }
+    
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get(url, params=params, timeout=15.0)
+            response = await client.get(url, params=params, headers=headers, timeout=20.0)
             if response.status_code != 200:
                 raise HTTPException(status_code=502, detail="El motor de traducción está saturado. Intenta más tarde.")
                 
@@ -124,6 +135,7 @@ async def translate_text(request: Request, payload: TranslationRequest, current_
             else:
                 raise HTTPException(status_code=500, detail=f"Error del traductor: {data.get('responseDetails')}")
     except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="Tiempo de espera agotado. El texto es muy largo o la red está lenta.")
+        raise HTTPException(status_code=504, detail="Tiempo de espera agotado.")
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Fallo de conexión interno.")
+        # NUEVO: Mostrará el código de error técnico exacto en la interfaz web si vuelve a fallar
+        raise HTTPException(status_code=500, detail=f"Fallo de conexión interno: {str(e)}")
