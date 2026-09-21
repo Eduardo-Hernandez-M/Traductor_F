@@ -37,14 +37,18 @@
         .status { text-align: center; font-size: 0.85em; color: #666; height: 20px; margin-top: -5px; margin-bottom: 10px; }
         #app-view, #auth-view { transition: opacity 0.3s; }
         .hidden { display: none !important; }
+        
+        /* Estilos del panel de administrador */
+        .admin-panel { margin-top: 25px; padding: 20px; border: 1px solid var(--border); border-radius: 6px; background-color: #f8fafd; }
+        .admin-panel h4 { margin-top: 0; color: var(--primary-blue); margin-bottom: 10px;}
     </style>
 </head>
 <body>
 
 <!-- PANTALLA DE AUTENTICACIÓN -->
 <div class="container" id="auth-view">
-    <h2>Bienvenido</h2>
-    <div class="subtitle">Ingresa tus credenciales para acceder al sistema</div>
+    <h2>Traductor Seguro</h2>
+    <div class="subtitle">Ingresa tus credenciales para acceder</div>
     
     <label>Usuario</label>
     <input type="text" id="username" placeholder="Tu nombre de usuario">
@@ -55,7 +59,6 @@
     <div class="status" id="authStatus"></div>
 
     <button class="btn btn-primary" onclick="login()">Iniciar Sesión</button>
-    <button class="btn btn-outline" onclick="register()">Crear Nuevo Usuario</button>
 </div>
 
 <!-- PANTALLA DEL TRADUCTOR -->
@@ -84,13 +87,22 @@
     <textarea id="outputText" readonly placeholder="El resultado aparecerá aquí..."></textarea>
     
     <button class="btn btn-outline" onclick="speakTranslation()">🔊 Reproducir Audio</button>
+
+    <!-- PANEL EXCLUSIVO PARA ADMINISTRADOR -->
+    <div id="adminPanel" class="admin-panel hidden">
+        <h4>Panel de Administrador: Nuevo Usuario</h4>
+        <input type="text" id="newUsername" placeholder="Nombre del nuevo usuario">
+        <input type="password" id="newPassword" placeholder="Contraseña asignada">
+        <button class="btn btn-black" onclick="createUser()">Registrar Usuario</button>
+        <div class="status" id="regStatus" style="margin-top: 10px;"></div>
+    </div>
 </div>
 
 <script>
     const API_BASE = window.location.origin;
 
     // --- LÓGICA DE AUTENTICACIÓN ---
-    async function authRequest(endpoint, isLogin) {
+    async function login() {
         const user = document.getElementById('username').value.trim();
         const pass = document.getElementById('password').value.trim();
         const status = document.getElementById('authStatus');
@@ -101,11 +113,11 @@
             return;
         }
 
-        status.innerText = isLogin ? "Iniciando sesión..." : "Creando usuario...";
+        status.innerText = "Iniciando sesión...";
         status.style.color = "#666";
 
         try {
-            const res = await fetch(`${API_BASE}/${endpoint}`, {
+            const res = await fetch(`${API_BASE}/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username: user, password: pass })
@@ -113,26 +125,60 @@
             const data = await res.json();
 
             if (res.ok) {
-                if (isLogin) {
-                    sessionStorage.setItem('token', data.access_token);
-                    sessionStorage.setItem('username', data.username);
-                    showApp();
-                } else {
-                    status.innerText = data.message;
-                    status.style.color = "green";
-                }
+                sessionStorage.setItem('token', data.access_token);
+                sessionStorage.setItem('username', data.username);
+                showApp();
             } else {
-                status.innerText = data.detail || "Error en la operación";
+                status.innerText = data.detail || "Error al iniciar sesión";
                 status.style.color = "red";
             }
         } catch (err) {
-            status.innerText = "Error de conexión con el servidor.";
+            status.innerText = "Error de conexión.";
             status.style.color = "red";
         }
     }
 
-    function login() { authRequest('login', true); }
-    function register() { authRequest('register', false); }
+    // --- LÓGICA DE CREACIÓN DE USUARIO (SOLO ADMIN) ---
+    async function createUser() {
+        const user = document.getElementById('newUsername').value.trim();
+        const pass = document.getElementById('newPassword').value.trim();
+        const status = document.getElementById('regStatus');
+        const token = sessionStorage.getItem('token');
+
+        if (!user || !pass) {
+            status.innerText = "Completa los campos del nuevo usuario.";
+            status.style.color = "red";
+            return;
+        }
+
+        status.innerText = "Creando...";
+        status.style.color = "#666";
+
+        try {
+            const res = await fetch(`${API_BASE}/register`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ username: user, password: pass })
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                status.innerText = data.message;
+                status.style.color = "green";
+                document.getElementById('newUsername').value = "";
+                document.getElementById('newPassword').value = "";
+            } else {
+                status.innerText = data.detail || "Error al crear el usuario";
+                status.style.color = "red";
+            }
+        } catch (err) {
+            status.innerText = "Error de conexión.";
+            status.style.color = "red";
+        }
+    }
     
     function logout() {
         sessionStorage.removeItem('token');
@@ -145,14 +191,23 @@
 
     function showApp() {
         const token = sessionStorage.getItem('token');
+        const username = sessionStorage.getItem('username');
+        
         if (token) {
             document.getElementById('auth-view').classList.add('hidden');
             document.getElementById('app-view').classList.remove('hidden');
-            document.getElementById('userDisplay').innerText = `👤 ${sessionStorage.getItem('username')}`;
+            document.getElementById('userDisplay').innerText = `👤 ${username}`;
+            
+            // Mostrar panel de administrador solo si el usuario es admin
+            if (username.toLowerCase() === 'admin') {
+                document.getElementById('adminPanel').classList.remove('hidden');
+            } else {
+                document.getElementById('adminPanel').classList.add('hidden');
+            }
         }
     }
 
-    // --- LÓGICA DE MICRÓFONO (Compatible con PC y Móvil) ---
+    // --- LÓGICA DE MICRÓFONO ---
     function startDictation() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
@@ -232,7 +287,6 @@
         synth.speak(utterance);
     }
 
-    // Verificar si ya hay sesión iniciada al cargar la página
     window.onload = showApp;
 </script>
 

@@ -7,11 +7,11 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from passlib.context import CryptContext
+from deep_translator import GoogleTranslator
 import jwt
 from datetime import datetime, timedelta
 import sqlite3
-import httpx
-import html
+import asyncio
 import os
 
 # --- CONFIGURACIÓN DE SEGURIDAD ---
@@ -21,12 +21,10 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
 
 def init_db():
-    """Inicializa la base de datos y asegura que el admin siempre exista"""
     conn = sqlite3.connect("usuarios.db")
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS users (username TEXT UNIQUE, password TEXT)''')
     
-    # NUEVO: CREACIÓN OBLIGATORIA DEL USUARIO ADMIN
     c.execute("SELECT * FROM users WHERE username = 'admin'")
     if not c.fetchone():
         hashed_pw = pwd_context.hash("Traductor.2026")
@@ -64,7 +62,7 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
         payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
         return payload.get("sub")
     except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="La sesión ha expirado. Inicia sesión de nuevo.")
+        raise HTTPException(status_code=401, detail="La sesión ha expirado.")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Token inválido.")
 
@@ -79,9 +77,13 @@ async def serve_webpage():
 
 @app.post("/register")
 @limiter.limit("5/minute")
-def register(request: Request, user: UserAuth):
+def register(request: Request, user: UserAuth, current_user: str = Depends(verify_token)):
+    # Capa de seguridad adicional: Solo el admin puede usar este endpoint
+    if current_user != "admin":
+        raise HTTPException(status_code=403, detail="Solo el administrador puede crear usuarios.")
+        
     if user.username.lower() == "admin":
-        raise HTTPException(status_code=400, detail="No puedes registrar un usuario con este nombre.")
+        raise HTTPException(status_code=400, detail="Este nombre está reservado.")
         
     conn = sqlite3.connect("usuarios.db")
     c = conn.cursor()
@@ -93,7 +95,7 @@ def register(request: Request, user: UserAuth):
         conn.close()
         raise HTTPException(status_code=400, detail="El usuario ya existe.")
     conn.close()
-    return {"message": "Usuario creado exitosamente. Ya puedes iniciar sesión."}
+    return {"message": f"Usuario '{user.username}' creado con éxito."}
 
 @app.post("/login")
 @limiter.limit("10/minute")
@@ -113,29 +115,16 @@ def login(request: Request, user: UserAuth):
 @app.post("/translate")
 @limiter.limit("15/minute")
 async def translate_text(request: Request, payload: TranslationRequest, current_user: str = Depends(verify_token)):
-    safe_text = html.escape(payload.text.strip())
-    langpair = "es|zh-CN" if payload.direction == "es-zh" else "zh-CN|es"
-    url = "https://api.mymemory.translated.net/get"
-    params = {"q": safe_text, "langpair": langpair}
+    safe_text = payload.text.strip()
     
-    # NUEVO: Cabecera para evitar que el proveedor bloquee la conexión
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
-    }
+    # Configuración de idiomas para deep-translator
+    source_lang = 'es' if payload.direction == "es-zh" else 'zh-CN'
+    target_lang = 'zh-CN' if payload.direction == "es-zh" else 'es'
     
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, params=params, headers=headers, timeout=20.0)
-            if response.status_code != 200:
-                raise HTTPException(status_code=502, detail="El motor de traducción está saturado. Intenta más tarde.")
-                
-            data = response.json()
-            if data.get("responseStatus") == 200:
-                return {"original": safe_text, "translation": data["responseData"]["translatedText"]}
-            else:
-                raise HTTPException(status_code=500, detail=f"Error del traductor: {data.get('responseDetails')}")
-    except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="Tiempo de espera agotado.")
+        # Se ejecuta en un hilo separado para no bloquear el servidor asíncrono
+        traductor = GoogleTranslator(source=source_lang, target=target_lang)
+        resultado = await asyncio.to_thread(traductor.translate, safe_text)
+        return {"original": safe_text, "translation": resultado}
     except Exception as e:
-        # NUEVO: Mostrará el código de error técnico exacto en la interfaz web si vuelve a fallar
-        raise HTTPException(status_code=500, detail=f"Fallo de conexión interno: {str(e)}")
+        raise HTTPException(status_code=500, detail="Fallo en el motor de traducción interno.")
