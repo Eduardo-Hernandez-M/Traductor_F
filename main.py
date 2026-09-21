@@ -7,7 +7,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from passlib.context import CryptContext
-from deep_translator import GoogleTranslator
+from translate import Translator
 import jwt
 from datetime import datetime, timedelta
 import sqlite3
@@ -110,20 +110,23 @@ def login(request: Request, user: UserAuth):
     token = jwt.encode({"sub": user.username, "exp": datetime.utcnow() + timedelta(hours=24)}, SECRET_KEY, algorithm=ALGORITHM)
     return {"access_token": token, "username": user.username}
 
-# CORRECCIÓN: Se eliminó 'async' para delegar la gestión del hilo a FastAPI
 @app.post("/translate")
 @limiter.limit("15/minute")
 def translate_text(request: Request, payload: TranslationRequest, current_user: str = Depends(verify_token)):
     safe_text = payload.text.strip()
     
-    source_lang = 'es' if payload.direction == "es-zh" else 'zh-CN'
-    target_lang = 'zh-CN' if payload.direction == "es-zh" else 'es'
+    # Mapeo de idiomas para la librería 'translate'
+    source_lang = 'es' if payload.direction == "es-zh" else 'zh'
+    target_lang = 'zh' if payload.direction == "es-zh" else 'es'
     
     try:
-        traductor = GoogleTranslator(source=source_lang, target=target_lang)
-        # Ejecución síncrona directa y estable
-        resultado = traductor.translate(safe_text)
+        translator = Translator(from_lang=source_lang, to_lang=target_lang)
+        resultado = translator.translate(safe_text)
+        
+        # Validar si el proveedor devolvió un error embebido en el texto
+        if "MYMEMORY WARNING" in resultado:
+            raise Exception("Límite de traducciones diarias alcanzado.")
+            
         return {"original": safe_text, "translation": resultado}
     except Exception as e:
-        # Si llega a fallar, enviará el motivo exacto a la interfaz web
         raise HTTPException(status_code=500, detail=f"Fallo técnico: {str(e)}")
