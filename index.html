@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Traductor de Voz Seguro</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; display: flex; justify-content: center; }
+        .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 500px; }
+        h2 { text-align: center; color: #333; }
+        label { font-weight: bold; margin-top: 10px; display: block; color: #555; }
+        input[type="password"], select, textarea { width: 100%; padding: 10px; margin-top: 5px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+        textarea { resize: vertical; min-height: 80px; }
+        .btn-group { display: flex; gap: 10px; }
+        button { flex: 1; padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        .btn-mic { background-color: #dc3545; color: white; }
+        .btn-mic:hover { background-color: #c82333; }
+        .btn-translate { background-color: #0d6efd; color: white; }
+        .btn-translate:hover { background-color: #0b5ed7; }
+        .btn-listen { background-color: #198754; color: white; margin-top: 10px; width: 100%; }
+        .btn-listen:hover { background-color: #157347; }
+        .status { text-align: center; font-size: 0.9em; color: #888; margin-bottom: 10px; height: 20px;}
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Traductor con Voz 🎤</h2>
+    
+    <label>Llave de Seguridad (API Key):</label>
+    <input type="password" id="apiKey" placeholder="Ingresa tu clave secreta">
+
+    <label>Dirección:</label>
+    <select id="direction">
+        <option value="es-zh">Español a Chino Mandarín</option>
+        <option value="zh-es">Chino a Español</option>
+    </select>
+
+    <label>Texto a traducir:</label>
+    <textarea id="inputText" placeholder="Escribe o usa el micrófono..."></textarea>
+    
+    <div class="status" id="micStatus"></div>
+
+    <div class="btn-group">
+        <button class="btn-mic" onclick="startDictation()">🎤 Dictar</button>
+        <button class="btn-translate" onclick="translateText()">Traducir ➔</button>
+    </div>
+
+    <label>Resultado:</label>
+    <textarea id="outputText" readonly placeholder="La traducción aparecerá aquí..."></textarea>
+    
+    <button class="btn-listen" onclick="speakTranslation()">🔊 Escuchar Traducción</button>
+</div>
+
+<script>
+    // 1. LÓGICA DEL MICRÓFONO (Speech-to-Text)
+    function startDictation() {
+        if (window.hasOwnProperty('webkitSpeechRecognition') || window.hasOwnProperty('SpeechRecognition')) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            const recognition = new SpeechRecognition();
+            
+            const dir = document.getElementById('direction').value;
+            recognition.lang = dir === 'es-zh' ? 'es-MX' : 'cmn-Hans-CN'; // Configura el idioma que va a escuchar
+            recognition.continuous = false;
+            recognition.interimResults = false;
+
+            document.getElementById('micStatus').innerText = "Escuchando... Habla ahora.";
+            document.getElementById('micStatus').style.color = "#dc3545";
+
+            recognition.start();
+
+            recognition.onresult = function(e) {
+                document.getElementById('inputText').value = e.results[0][0].transcript;
+                document.getElementById('micStatus').innerText = "Voz capturada.";
+                document.getElementById('micStatus').style.color = "#198754";
+                recognition.stop();
+            };
+
+            recognition.onerror = function(e) {
+                document.getElementById('micStatus').innerText = "Error en el micrófono: " + e.error;
+                document.getElementById('micStatus').style.color = "red";
+                recognition.stop();
+            }
+        } else {
+            alert("Tu navegador no soporta el reconocimiento de voz. Usa Chrome o Edge.");
+        }
+    }
+
+    // 2. LÓGICA DE TRADUCCIÓN (Conexión a tu API)
+    async function translateText() {
+        const text = document.getElementById('inputText').value;
+        const direction = document.getElementById('direction').value;
+        const apiKey = document.getElementById('apiKey').value;
+
+        if (!text || !apiKey) {
+            alert("Por favor, ingresa el texto y la API Key.");
+            return;
+        }
+
+        document.getElementById('outputText').value = "Traduciendo...";
+
+        try {
+            const response = await fetch('/translate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-API-KEY': apiKey
+                },
+                body: JSON.stringify({ text: text, direction: direction })
+            });
+
+            if (response.status === 200) {
+                const data = await response.json();
+                document.getElementById('outputText').value = data.translation;
+            } else if (response.status === 403) {
+                document.getElementById('outputText').value = "Error: API Key incorrecta.";
+            } else if (response.status === 429) {
+                document.getElementById('outputText').value = "Error: Límite de peticiones excedido (Rate Limit).";
+            } else {
+                document.getElementById('outputText').value = "Error en el servidor.";
+            }
+        } catch (error) {
+            document.getElementById('outputText').value = "Error de conexión.";
+        }
+    }
+
+    // 3. LÓGICA DEL ALTAVOZ (Text-to-Speech)
+    function speakTranslation() {
+        const textToSpeak = document.getElementById('outputText').value;
+        if (!textToSpeak || textToSpeak.startsWith("Error") || textToSpeak === "Traduciendo...") return;
+
+        const synth = window.speechSynthesis;
+        const utterance = new SpeechSynthesisUtterance(textToSpeak);
+        
+        const dir = document.getElementById('direction').value;
+        // Si traducimos a chino, la voz debe ser en chino. Si traducimos a español, voz en español.
+        utterance.lang = dir === 'es-zh' ? 'zh-CN' : 'es-MX'; 
+        
+        synth.speak(utterance);
+    }
+</script>
+
+</body>
+</html>
