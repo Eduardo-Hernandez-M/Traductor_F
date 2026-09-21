@@ -38,7 +38,6 @@
         #app-view, #auth-view { transition: opacity 0.3s; }
         .hidden { display: none !important; }
         
-        /* Estilos del panel de administrador */
         .admin-panel { margin-top: 25px; padding: 20px; border: 1px solid var(--border); border-radius: 6px; background-color: #f8fafd; }
         .admin-panel h4 { margin-top: 0; color: var(--primary-blue); margin-bottom: 10px;}
     </style>
@@ -101,7 +100,6 @@
 <script>
     const API_BASE = window.location.origin;
 
-    // --- LÓGICA DE AUTENTICACIÓN ---
     async function login() {
         const user = document.getElementById('username').value.trim();
         const pass = document.getElementById('password').value.trim();
@@ -138,7 +136,6 @@
         }
     }
 
-    // --- LÓGICA DE CREACIÓN DE USUARIO (SOLO ADMIN) ---
     async function createUser() {
         const user = document.getElementById('newUsername').value.trim();
         const pass = document.getElementById('newPassword').value.trim();
@@ -198,7 +195,6 @@
             document.getElementById('app-view').classList.remove('hidden');
             document.getElementById('userDisplay').innerText = `👤 ${username}`;
             
-            // Mostrar panel de administrador solo si el usuario es admin
             if (username.toLowerCase() === 'admin') {
                 document.getElementById('adminPanel').classList.remove('hidden');
             } else {
@@ -207,7 +203,6 @@
         }
     }
 
-    // --- LÓGICA DE MICRÓFONO ---
     function startDictation() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
@@ -240,7 +235,6 @@
         }
     }
 
-    // --- LÓGICA DE TRADUCCIÓN ---
     async function translateText() {
         const text = document.getElementById('inputText').value.trim();
         const direction = document.getElementById('direction').value;
@@ -274,7 +268,6 @@
         }
     }
 
-    // --- LÓGICA DE ALTAVOZ ---
     function speakTranslation() {
         const textToSpeak = document.getElementById('outputText').value;
         if (!textToSpeak || textToSpeak.startsWith("Error") || textToSpeak === "Traduciendo...") return;

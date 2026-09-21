@@ -115,17 +115,19 @@ def login(request: Request, user: UserAuth):
 def translate_text(request: Request, payload: TranslationRequest, current_user: str = Depends(verify_token)):
     safe_text = payload.text.strip()
     
-    # Mapeo de idiomas para la librería 'translate'
     source_lang = 'es' if payload.direction == "es-zh" else 'zh'
     target_lang = 'zh' if payload.direction == "es-zh" else 'es'
     
     try:
-        translator = Translator(from_lang=source_lang, to_lang=target_lang)
+        translator = Translator(
+            from_lang=source_lang, 
+            to_lang=target_lang,
+            email="tu_correo_real@gmail.com"  # <--- INGRESA TU CORREO AQUÍ
+        )
         resultado = translator.translate(safe_text)
         
-        # Validar si el proveedor devolvió un error embebido en el texto
         if "MYMEMORY WARNING" in resultado:
-            raise Exception("Límite de traducciones diarias alcanzado.")
+            raise Exception("Límite de 50,000 traducciones diarias alcanzado.")
             
         return {"original": safe_text, "translation": resultado}
     except Exception as e:
