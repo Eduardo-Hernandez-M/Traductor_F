@@ -116,31 +116,40 @@ def login(request: Request, user: UserAuth):
 def translate_text(request: Request, payload: TranslationRequest, current_user: str = Depends(verify_token)):
     safe_text = payload.text.strip()
     
-    # Lingva usa 'zh' para chino estándar
     source_lang = 'es' if payload.direction == "es-zh" else 'zh'
     target_lang = 'zh' if payload.direction == "es-zh" else 'es'
-    
-    # Codificar el texto para que pueda viajar seguro por la URL
     encoded_text = quote(safe_text)
     
-    # URL del túnel público de Lingva
-    url = f"https://lingva.ml/api/v1/{source_lang}/{target_lang}/{encoded_text}"
+    # Red de servidores espejo (Túneles alternativos)
+    instancias = [
+        "https://lingva.thedesk.top",
+        "https://translate.plausibility.cloud",
+        "https://lingva.lunar.icu",
+        "https://lingva.ml"
+    ]
+    
+    # Cabeceras para evadir firewalls haciéndonos pasar por Google Chrome
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "application/json"
+    }
     
     try:
-        with httpx.Client() as client:
-            response = client.get(url, timeout=15.0)
-            
-            # Manejo específico si el túnel llegara a saturarse
-            if response.status_code == 429:
-                raise HTTPException(status_code=502, detail="El túnel de traducción está saturado. Espera un momento.")
-                
-            response.raise_for_status()
-            data = response.json()
-            
-            traduccion = data.get("translation")
-            if not traduccion:
-                raise Exception("El servidor no devolvió la traducción esperada.")
-            
-        return {"original": safe_text, "translation": traduccion}
+        with httpx.Client(headers=headers, timeout=10.0) as client:
+            # Intenta conectar con cada servidor hasta que uno funcione
+            for base_url in instancias:
+                url = f"{base_url}/api/v1/{source_lang}/{target_lang}/{encoded_text}"
+                try:
+                    response = client.get(url)
+                    if response.status_code == 200:
+                        data = response.json()
+                        traduccion = data.get("translation")
+                        if traduccion:
+                            return {"original": safe_text, "translation": traduccion}
+                except httpx.RequestError:
+                    continue  # Si el servidor actual está caído, pasa al siguiente
+                    
+        # Si termina el ciclo y ninguno funcionó
+        raise HTTPException(status_code=502, detail="Todos los servidores de traducción están bloqueados. Intenta en unos minutos.")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fallo técnico de red: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Fallo técnico interno: {str(e)}")
